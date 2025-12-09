@@ -1,0 +1,162 @@
+# ======================================================
+#     ANÁLISIS DE RIESGO DE DESERCIÓN EDUCATIVA
+# ======================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# CONFIGURACIONES
+sns.set(style="whitegrid")
+plt.rcParams["figure.figsize"] = (12,6)
+
+# ======================================================
+# 1. Cargar Base de Datos
+# ======================================================
+
+df = pd.read_csv('/content/datab_educacion.csv', sep=';', encoding='latin1')
+
+print("Primeras filas:")
+display(df.head())
+
+print("\nColumnas del dataset:")
+print(df.columns)
+
+print("\nDimensiones:", df.shape)
+
+
+# ======================================================
+# 2. Normalizar nombres de columnas
+# ======================================================
+
+df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_').str.replace('á','a').str.replace('é','e').str.replace('ó','o').str.replace('ú','u').str.replace('í','i').str.replace('ñ','n')
+
+print("\nColumnas normalizadas:")
+print(df.columns)
+
+
+# ======================================================
+# 3. Convertir variables numéricas
+# ======================================================
+
+num_cols = ['desercion', 'reprobacion', 'repitencia', 'matricula', 'cobertura']
+
+for col in num_cols:
+    if col in df.columns:
+        # Clean the column before converting to numeric
+        df[col] = df[col].astype(str).str.replace('%', '', regex=False).str.replace(',', '.', regex=False)
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+df.describe()
+
+
+# ======================================================
+# 4. Crear variable PERIODO
+# ======================================================
+
+df['periodo'] = df['ano'].apply(lambda x: '2018-2022' if x <= 2022 else '2023-2024')
+
+df['periodo'].value_counts()
+
+
+# ======================================================
+# 5. Indicadores promedio por departamento y periodo
+# ======================================================
+
+indicadores = df.groupby(['departamento', 'periodo'])[['desercion','reprobacion','repitencia']].mean().reset_index()
+
+print("\nIndicadores por departamento y periodo:")
+display(indicadores.head())
+
+
+# ======================================================
+# 6. Gráficos comparativos por indicador
+# ======================================================
+
+def graficar_comparacion(indicador):
+    plt.figure(figsize=(14,6))
+    sns.barplot(data=indicadores, x='departamento', y=indicador, hue='periodo')
+    plt.title(f'Comparación de {indicador.capitalize()} entre periodos')
+    plt.xticks(rotation=90)
+    plt.tight_layout()
+    plt.show()
+
+graficar_comparacion('desercion')
+graficar_comparacion('reprobacion')
+graficar_comparacion('repitencia')
+
+
+# ======================================================
+# 7. Ranking de Riesgo por Departamento
+# ======================================================
+
+# Crear un score combinando indicadores
+indicadores['score_riesgo'] = (
+    indicadores['desercion']*0.5 +
+    indicadores['reprobacion']*0.3 +
+    indicadores['repitencia']*0.2
+)
+
+ranking = indicadores.sort_values('score_riesgo', ascending=False)
+
+print("\nRanking de Riesgo por Departamento:")
+display(ranking.head(10))
+
+
+# ======================================================
+# 8. Heatmap (mapa de calor)
+# ======================================================
+
+pivot = indicadores.pivot(index='departamento', columns='periodo', values='score_riesgo')
+
+plt.figure(figsize=(10,12))
+sns.heatmap(pivot, annot=True, cmap='Reds')
+plt.title("Mapa de calor – Riesgo educativo")
+plt.show()
+
+
+# ======================================================
+# 9. Comparación estadística entre periodos
+# ======================================================
+
+periodo1 = indicadores[indicadores['periodo']=='2018-2022']['desercion']
+periodo2 = indicadores[indicadores['periodo']=='2023-2024']['desercion']
+
+from scipy.stats import ttest_ind
+
+t_stat, p_val = ttest_ind(periodo1, periodo2, nan_policy='omit')
+
+print("\n=== TEST ESTADÍSTICO ===")
+print("T-Statistic:", t_stat)
+print("P-Value:", p_val)
+
+if p_val < 0.05:
+    print("\nDiferencia significativa entre los periodos.")
+else:
+    print("\nNO hay diferencia estadística significativa.")
+
+
+# ======================================================
+# 10. Interpretación Automática
+# ======================================================
+
+print("\n=== ANÁLISIS AUTOMÁTICO ===")
+
+dep_mayor_riesgo = ranking.iloc[0]['departamento']
+dep_menor_riesgo = ranking.iloc[-1]['departamento']
+
+print(f"- Departamento con mayor riesgo educativo: {dep_mayor_riesgo}")
+print(f"- Departamento con menor riesgo educativo: {dep_menor_riesgo}")
+
+if periodo2.mean() > periodo1.mean():
+    print("- La deserción aumentó en el periodo 2023–2024.")
+else:
+    print("- La deserción fue mayor en 2018–2022.")
+
+print("- Se recomienda analizar factores externos como políticas educativas, acceso digital y periodos electorales.")
+
+
+# ======================================================
+# FIN DEL PROYECTO
+# ======================================================
